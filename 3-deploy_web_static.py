@@ -1,63 +1,55 @@
 #!/usr/bin/python3
-""" Function that deploys """
-from datetime import datetime
 from fabric.api import *
 import os
-import shlex
+from datetime import datetime
 
-
-env.hosts = ['54.157.32.137', '52.55.249.213']
-env.user = "ubuntu"
+env.hosts = ['52.55.249.213', '54.157.32.137']
 
 
 def deploy():
-    """ DEPLOYS """
-    try:
-        archive_path = do_pack()
-    except:
+    archive_path = do_pack()
+    if archive_path is None:
         return False
-
     return do_deploy(archive_path)
+
+
+def do_deploy(archive_path):
+    a_list = archive_path.split(".tgz")
+    archive_wo_ext = "".join(a_list)
+    b_list = archive_wo_ext.split("versions/")
+    archive_wo_ext_ver = "".join(b_list)
+    c_list = archive_path.split("versions/")
+    archive_wo_ver = "".join(c_list)
+    if archive_path:
+        put(archive_path, '/tmp/')
+        run("mkdir -p /data/web_static/releases/{}/".
+            format(archive_wo_ext_ver))
+        run("tar -zxf /tmp/{} -C /data/web_static/releases/{}/"
+            .format(archive_wo_ver, archive_wo_ext_ver))
+        run("rm -r /tmp/{}".format(archive_wo_ver))
+        run("mv /data/web_static/releases/{}/web_static/*\
+        /data/web_static/releases/{}/".format(archive_wo_ext_ver,
+                                              archive_wo_ext_ver))
+        run("rm -rf /data/web_static/releases/{}/web_static".
+            format(archive_wo_ext_ver))
+        run("rm -rf /data/web_static/current")
+        run("ln -s /data/web_static/releases/{}/ /data/web_static/current".
+            format(archive_wo_ext_ver))
+        print("New version deployed!")
+        return True
+    else:
+        return False
 
 
 def do_pack():
     try:
-        if not os.path.exists("versions"):
-            local('mkdir versions')
-        t = datetime.now()
-        f = "%Y%m%d%H%M%S"
-        archive_path = 'versions/web_static_{}.tgz'.format(t.strftime(f))
-        local('tar -cvzf {} web_static'.format(archive_path))
-        return archive_path
+        filepath = "versions/web_static_" + datetime.now().\
+                   strftime("%Y%m%d%H%M%S") + ".tgz"
+        local("mkdir -p versions")
+        local("tar -zcvf versions/web_static_$(date +%Y%m%d%H%M%S).tgz\
+        web_static")
+        print("web_static packed: {} -> {}".
+              format(filepath, os.path.getsize(filepath)))
+        return filepath
     except:
         return None
-
-
-def do_deploy(archive_path):
-    """ Deploys """
-    if not os.path.exists(archive_path):
-        return False
-    try:
-        name = archive_path.replace('/', ' ')
-        name = shlex.split(name)
-        name = name[-1]
-
-        wname = name.replace('.', ' ')
-        wname = shlex.split(wname)
-        wname = wname[0]
-
-        releases_path = "/data/web_static/releases/{}/".format(wname)
-        tmp_path = "/tmp/{}".format(name)
-
-        put(archive_path, "/tmp/")
-        run("mkdir -p {}".format(releases_path))
-        run("tar -xzf {} -C {}".format(tmp_path, releases_path))
-        run("rm {}".format(tmp_path))
-        run("mv {}web_static/* {}".format(releases_path, releases_path))
-        run("rm -rf {}web_static".format(releases_path))
-        run("rm -rf /data/web_static/current")
-        run("ln -s {} /data/web_static/current".format(releases_path))
-        print("New version deployed!")
-        return True
-    except:
-        return False
